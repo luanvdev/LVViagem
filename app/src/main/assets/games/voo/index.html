@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><style>html,body{margin:0;height:100%;background:#0E1A24;color:#EAF1F6;font-family:sans-serif;touch-action:none;overflow:hidden;user-select:none;-webkit-user-select:none}canvas{display:block;width:100%;height:100%}button{background:#F2B544;color:#1A1200;border:0;border-radius:8px;padding:8px 16px;font-size:16px;font-weight:bold}
+</style></head><body><canvas id="c"></canvas>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');let W,H,u;
+function rs(){W=c.width=innerWidth;H=c.height=innerHeight;u=H/700}rs();addEventListener('resize',rs);
+let b,pipes,score,state,t,best=0;
+function reset(){b={y:H/2,v:0};pipes=[];score=0;state=0;t=1.2;}
+reset();
+addEventListener('pointerdown',()=>{if(state===2){reset();return}state=1;b.v=-520*u;});
+function update(dt){
+  if(state!==1)return;
+  b.v+=1600*u*dt;b.y+=b.v*dt;t+=dt;
+  if(t>1.5){t=0;pipes.push({x:W+60*u,gy:145*u+Math.random()*(H-290*u),pass:false});}
+  pipes.forEach(p=>p.x-=170*u*dt);
+  pipes=pipes.filter(p=>p.x>-80*u);
+  const bx=W*0.28,r=14*u;
+  if(b.y<r||b.y>H-r)state=2;
+  pipes.forEach(p=>{
+    if(bx+r>p.x&&bx-r<p.x+60*u&&(b.y-r<p.gy-95*u||b.y+r>p.gy+95*u))state=2;
+    if(!p.pass&&p.x+60*u<bx){p.pass=true;score++;}
+  });
+  if(state===2&&score>best)best=score;
+}
+function txt(s,y,sz){x.fillStyle='#EAF1F6';x.textAlign='center';x.font='bold '+sz+'px sans-serif';x.fillText(s,W/2,y);}
+function draw(){
+  x.fillStyle='#0E1A24';x.fillRect(0,0,W,H);
+  x.fillStyle='#2F7D5B';
+  pipes.forEach(p=>{x.fillRect(p.x,0,60*u,p.gy-95*u);x.fillRect(p.x,p.gy+95*u,60*u,H);});
+  x.fillStyle='#F2B544';x.beginPath();x.arc(W*0.28,b.y,14*u,0,Math.PI*2);x.fill();
+  txt(String(score),70*u,48*u);
+  if(state===0)txt('Toque para voar',H/2+80*u,24*u);
+  if(state===2){txt('Fim de jogo',H/2-10*u,34*u);txt('Melhor: '+best+' · toque para reiniciar',H/2+30*u,20*u);}
+}
+let last=performance.now();
+function loop(n){const dt=Math.min(0.033,(n-last)/1000);last=n;update(dt);draw();requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+</script></body></html>

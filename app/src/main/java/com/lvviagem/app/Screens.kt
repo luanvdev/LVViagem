@@ -3,6 +3,8 @@ package com.lvviagem.app
 import android.app.Activity
 import android.net.Uri
 import android.view.WindowManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -99,6 +102,7 @@ fun MainContent(music: MusicController) {
     var movie by remember { mutableStateOf<LvItem?>(null) }
     var library by remember { mutableStateOf<Library?>(null) }
     var reload by remember { mutableIntStateOf(0) }
+    var expanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(reload) {
         library = withContext(Dispatchers.IO) { LvStorage.load() }
@@ -107,12 +111,14 @@ fun MainContent(music: MusicController) {
     val playing = movie
     if (playing != null) {
         VideoPlayerScreen(playing) { movie = null }
+    } else if (expanded && music.currentIndex >= 0) {
+        NowPlayingScreen(music) { expanded = false }
     } else {
         Scaffold(
             containerColor = Lv.Bg,
             bottomBar = {
                 Column {
-                    if (music.currentIndex >= 0) MiniPlayer(music)
+                    if (music.currentIndex >= 0) MiniPlayer(music) { expanded = true }
                     NavigationBar(containerColor = Lv.Surface) {
                         listOf("🎬" to "Filmes", "🎵" to "Músicas", "🎮" to "Jogos").forEachIndexed { i, (icon, label) ->
                             NavigationBarItem(
@@ -137,7 +143,7 @@ fun MainContent(music: MusicController) {
                 Box(Modifier.weight(1f).fillMaxSize()) {
                     val lib = library
                     if (tab == 2) {
-                        GamesTab()
+                        GamesTab(library)
                     } else if (lib == null) {
                         CircularProgressIndicator(Modifier.align(Alignment.Center))
                     } else if (tab == 0) {
@@ -172,7 +178,7 @@ fun EmptyState(text: String) {
 @Composable
 fun MoviesTab(lib: Library, onOpen: (LvItem) -> Unit) {
     if (!lib.rootFound) {
-        EmptyState("Pasta não encontrada.\nCrie /storage/emulated/0/LVviagem/filmes e toque em Atualizar.")
+        EmptyState("Não foi possível criar a pasta LVviagem.\nVerifique a permissão de acesso aos arquivos.")
     } else if (lib.movies.isEmpty()) {
         EmptyState("Nenhum filme encontrado.\nCrie uma pasta para cada filme dentro de LVviagem/filmes, com um .mp4 e um .jpg.")
     } else {
@@ -196,7 +202,7 @@ fun MoviesTab(lib: Library, onOpen: (LvItem) -> Unit) {
 @Composable
 fun MusicTab(lib: Library, music: MusicController) {
     if (!lib.rootFound) {
-        EmptyState("Pasta não encontrada.\nCrie /storage/emulated/0/LVviagem/musicas e toque em Atualizar.")
+        EmptyState("Não foi possível criar a pasta LVviagem.\nVerifique a permissão de acesso aos arquivos.")
     } else if (lib.music.isEmpty()) {
         EmptyState("Nenhuma música encontrada.\nCrie uma pasta para cada música dentro de LVviagem/musicas, com um .mp3 e um .jpg.")
     } else {
@@ -223,66 +229,18 @@ fun MusicTab(lib: Library, music: MusicController) {
     }
 }
 
-@Composable
-fun MiniPlayer(music: MusicController) {
-    var progress by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(music.currentIndex) {
-        while (true) {
-            val d = music.player.duration
-            progress = if (d > 0) (music.player.currentPosition.toFloat() / d).coerceIn(0f, 1f) else 0f
-            delay(500)
-        }
-    }
-    val item = music.items.getOrNull(music.currentIndex)
-    Column(Modifier.fillMaxWidth().background(Color(0xFF1D3248))) {
-        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = Lv.Accent)
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(item?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            TextButton(onClick = { music.previous() }) { Text("⏮", fontSize = 20.sp) }
-            TextButton(onClick = { music.toggle() }) { Text(if (music.isPlaying) "⏸" else "▶", fontSize = 20.sp) }
-            TextButton(onClick = { music.next() }) { Text("⏭", fontSize = 20.sp) }
-        }
-    }
-}
+private data class AssetGame(val id: String, val emoji: String, val name: String, val desc: String)
+
+private val ASSET_GAMES = listOf(
+    AssetGame("2048", "🔢", "2048", "Deslize para juntar os números."),
+    AssetGame("memoria", "🃏", "Jogo da Memória", "Encontre os pares de figuras."),
+    AssetGame("voo", "🐤", "Voo", "Toque para voar entre os canos."),
+    AssetGame("blocos", "🧱", "Quebra-Blocos", "Arraste para mover a raquete."),
+    AssetGame("corrida", "🏎️", "Corrida", "Toque na esquerda ou direita para desviar."),
+)
 
 @Composable
-fun VideoPlayerScreen(item: LvItem, onClose: () -> Unit) {
-    val context = LocalContext.current
-    val exo = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(item.media)))
-            prepare()
-            playWhenReady = true
-        }
-    }
-    DisposableEffect(Unit) { onDispose { exo.release() } }
-    BackHandler(onBack = onClose)
-
-    DisposableEffect(Unit) {
-        val window = (context as? Activity)?.window
-        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller?.hide(WindowInsetsCompat.Type.systemBars())
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose {
-            controller?.show(WindowInsetsCompat.Type.systemBars())
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
-
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply { player = exo } },
-            modifier = Modifier.fillMaxSize(),
-        )
-        TextButton(onClick = onClose, modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
-            Text("← Voltar", color = Color.White)
-        }
-    }
-}
-
-@Composable
-fun GamesTab() {
+fun GamesTab(lib: Library?) {
     var game by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = game != null) { game = null }
 
@@ -290,12 +248,23 @@ fun GamesTab() {
         if (game != null) {
             TextButton(onClick = { game = null }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("← Jogos") }
         }
-        when (game) {
-            "snake" -> SnakeGame()
-            "velha" -> TicTacToeGame()
-            else -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                GameCard("🐍", "Snake", "Deslize o dedo para guiar a cobra.") { game = "snake" }
-                GameCard("⭕", "Jogo da Velha", "Você (X) contra o celular (O).") { game = "velha" }
+        val g = game
+        when {
+            g == "snake" -> SnakeGame()
+            g == "velha" -> TicTacToeGame()
+            g != null && g.startsWith("html:") -> WebGame(g.removePrefix("html:"))
+            else -> LazyColumn(
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item { GameCard("🐍", "Snake", "Deslize o dedo para guiar a cobra.") { game = "snake" } }
+                item { GameCard("⭕", "Jogo da Velha", "Você (X) contra o celular (O).") { game = "velha" } }
+                items(ASSET_GAMES) { ag ->
+                    GameCard(ag.emoji, ag.name, ag.desc) { game = "html:file:///android_asset/games/" + ag.id + "/index.html" }
+                }
+                items(lib?.games ?: emptyList()) { gm ->
+                    GameCard("🕹️", gm.title, "Jogo HTML5 (offline)") { game = "html:" + Uri.fromFile(gm.html).toString() }
+                }
             }
         }
     }
@@ -314,4 +283,25 @@ fun GameCard(emoji: String, name: String, description: String, onClick: () -> Un
             Text(description, color = Lv.Muted, fontSize = 14.sp)
         }
     }
+}
+
+@Composable
+fun WebGame(url: String) {
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.allowFileAccess = true
+                settings.allowFileAccessFromFileURLs = true
+                settings.allowUniversalAccessFromFileURLs = true
+                settings.blockNetworkLoads = true
+                settings.mediaPlaybackRequiresUserGesture = false
+                webViewClient = WebViewClient()
+                loadUrl(url)
+            }
+        },
+        onRelease = { it.destroy() },
+        modifier = Modifier.fillMaxSize(),
+    )
 }

@@ -18,6 +18,10 @@ class MusicController(context: Context) {
         private set
     var isPlaying by mutableStateOf(false)
         private set
+    var shuffle by mutableStateOf(false)
+        private set
+    var repeat by mutableIntStateOf(Player.REPEAT_MODE_ALL)
+        private set
 
     init {
         player.addListener(object : Player.Listener {
@@ -25,6 +29,8 @@ class MusicController(context: Context) {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentIndex = player.currentMediaItemIndex
             }
+            override fun onShuffleModeEnabledChanged(enabled: Boolean) { shuffle = enabled }
+            override fun onRepeatModeChanged(repeatMode: Int) { repeat = repeatMode }
         })
         player.repeatMode = Player.REPEAT_MODE_ALL
     }
@@ -44,5 +50,13 @@ class MusicController(context: Context) {
     fun pause() { player.pause() }
     fun next() { player.seekToNextMediaItem() }
     fun previous() { player.seekToPreviousMediaItem() }
+    fun toggleShuffle() { player.shuffleModeEnabled = !player.shuffleModeEnabled }
+    fun cycleRepeat() {
+        player.repeatMode = when (player.repeatMode) {
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_OFF
+            else -> Player.REPEAT_MODE_ALL
+        }
+    }
     fun release() { player.release() }
 }
